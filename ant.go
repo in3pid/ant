@@ -2,22 +2,21 @@ package ant
 
 type T interface{}
 
+// Cursor is a value iterator goroutine tied to a communication agent.
 type Cursor interface {
-	do()
-
-	Close()
-	Err() <-chan error
 	Value() <-chan T
+	Err() <-chan error
+	Close()
+
+	do()
 }
 
-type Curser interface {
-	Cursor(...interface{}) Cursor
-}
-
+// Queryer instantiates a Curser with type selection.
 type Queryer interface {
 	Query(query interface{}) TypeCurser
 }
 
+// TypeCurser may select a different decoder.
 type TypeCurser interface {
 	Curser
 
@@ -25,19 +24,31 @@ type TypeCurser interface {
 	Struct(interface{}) Curser
 }
 
-// func Exec(q Queryer, c Cursor) error {
-// 	for r := range c.Row() {
-// 		if _, err := q.Exec(r); err != nil {
-// 			c.SendStop()
-// 			return err
-// 		}
-// 	}
-// 	return <-c.Err()
-// }
+// Curser is a fully setup selector and can start a cursor.
+type Curser interface {
+	Cursor(args ...interface{}) Cursor
+}
 
-// CollectErr collects all cursor errors to a single channel. It
-// collects serially and may block unneccesarily.
+//FanIn multiplexes a set of cursors onto a single one.
+func FanIn(cursors ...cursor) Cursor {
+
+}
+
+// Filter is a predicate filter for Fold.
+func Filter(f func(T) bool) func(T) T {
+	return func(t T) T {
+		if f(t) {
+			return t
+		} else {
+			return nil
+		}
+	}
+}
+
+// CollectErr fans through the cursors, serially, and sends their errors to a new channel. May block unneccesarily but this is subject
+// to change.
 func CollectErr(cursors ...Cursor) <-chan error {
+	// TODO use reflection selects
 	errs := make(chan error)
 	go func() {
 		defer close(errs)
@@ -50,7 +61,8 @@ func CollectErr(cursors ...Cursor) <-chan error {
 	return errs
 }
 
-// StringBytes mutates a map[string]interface{} converting each []byte value to string.
+// StringBytes mutates a map[string]interface{} retyping []byte
+// values to strings
 func StringBytes(m T) T {
 	if m, ok := m.(map[string]T); ok {
 		for k, v := range m {
@@ -62,63 +74,10 @@ func StringBytes(m T) T {
 	return m
 }
 
-// Values returns a cursor populated with the values.
-func Values(values ...T) Cursor {
-	return Func(func(s Signal) {
-		for _, v := range values {
-			s.Send(v)
-		}
-	})
-}
-
-// Func instantiates a new cursor consisting of a fresh Signal and the
-// func in a goroutine. The signal is assuredly closed.
-func Func(f func(Signal)) Cursor {
-	return do(signalFunc{MakeSignal(), f})
-}
-func (c signalFunc) do() { c.f(c.Signal) }
-
-type signalFunc struct {
-	Signal
-	f func(Signal)
-}
-
-// Fold each value of the cursor through a list of functions, possibly
-// mutating, passing the result to upstream. If any return nil this
-// value is skipped.
-func Fold(c Cursor, f ...func(T) T) Cursor {
-	if fc, ok := c.(*foldCursor); ok {
-		fc.f = append(fc.f, f...)
-		return c
-	}
-	return do(&foldCursor{MakeSignal(), c, f})
-}
-
 func do(c Cursor) Cursor {
 	go func() {
 		defer c.Close()
 		c.do()
 	}()
 	return c
-}
-
-type foldCursor struct {
-	Signal
-	c Cursor
-	f []func(T) T
-}
-
-func (c foldCursor) do() {
-loop:
-	for v := range c.c.Value() {
-		for _, f := range c.f {
-			if v = f(v); v == nil {
-				continue loop
-			}
-		}
-		if !c.Send(v) {
-			break
-		}
-	}
-	c.CopyErr(c.c)
 }
