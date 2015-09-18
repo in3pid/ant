@@ -25,13 +25,14 @@ func Values(values ...T) Cursor {
 }
 
 // Fold the cursor such that for each value v, Fn(Fn-1(...(v))) is
-// passed to upstream. The value is skipped if any return nil
+// passed to upstream. The value is skipped if any function return nil.
 func Fold(c Cursor, f ...func(T) T) Cursor {
 	if fc, ok := c.(*foldCursor); ok {
 		fc.f = append(fc.f, f...)
 		return c
+	} else {
+		return do(&foldCursor{MakeSignal(), c, f})
 	}
-	return do(&foldCursor{MakeSignal(), c, f})
 }
 
 type foldCursor struct {
@@ -53,4 +54,19 @@ loop:
 		}
 	}
 	c.CopyErr(c.c)
+}
+
+// Filter c through a predicate f.
+func Filter(c Cursor, f func(T) bool) Cursor {
+	return Fold(c, filter(f))
+}
+
+func filter(f func(T) bool) func(T) T {
+	return func(t T) T {
+		if f(t) {
+			return t
+		} else {
+			return nil
+		}
+	}
 }

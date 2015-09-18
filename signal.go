@@ -37,7 +37,7 @@ func (s Signal) Send(value T) bool {
 	select {
 	case <-s.stop:
 		return false
-	case s.val <- val:
+	case s.val <- value:
 		return true
 	}
 }

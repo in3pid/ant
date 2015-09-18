@@ -11,12 +11,12 @@ type Cursor interface {
 	do()
 }
 
-// Queryer instantiates a Curser with type selection.
+// Queryer specifies some selection query with optional type associations.
 type Queryer interface {
 	Query(query interface{}) TypeCurser
 }
 
-// TypeCurser may select a different decoder.
+// TypeCurser is a Curser with a type selector..
 type TypeCurser interface {
 	Curser
 
@@ -24,26 +24,15 @@ type TypeCurser interface {
 	Struct(interface{}) Curser
 }
 
-// Curser is a fully setup selector and can start a cursor.
+// Curser is a complete selector and can start a Cursor.
 type Curser interface {
 	Cursor(args ...interface{}) Cursor
 }
 
 //FanIn multiplexes a set of cursors onto a single one.
-func FanIn(cursors ...cursor) Cursor {
-
-}
-
-// Filter is a predicate filter for Fold.
-func Filter(f func(T) bool) func(T) T {
-	return func(t T) T {
-		if f(t) {
-			return t
-		} else {
-			return nil
-		}
-	}
-}
+// func FanIn(cursors ...cursor) Cursor {
+// 	return nil
+// }
 
 // CollectErr fans through the cursors, serially, and sends their errors to a new channel. May block unneccesarily but this is subject
 // to change.
@@ -61,8 +50,8 @@ func CollectErr(cursors ...Cursor) <-chan error {
 	return errs
 }
 
-// StringBytes mutates a map[string]interface{} retyping []byte
-// values to strings
+// StringBytes retype []byte
+// values to strings in a map[string]interface{}
 func StringBytes(m T) T {
 	if m, ok := m.(map[string]T); ok {
 		for k, v := range m {
