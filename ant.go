@@ -2,40 +2,51 @@ package ant
 
 type T interface{}
 
-// Cursor is a value iterator goroutine tied to a communication agent.
+// A Cursor is a "lazy list" goroutine tied to a communcation agent.
 type Cursor interface {
-	Value() <-chan T
 	Err() <-chan error
+	Value() <-chan T
 	Close()
-
-	do()
 }
 
-// Queryer specifies some selection query with optional type associations.
+// A SendCursor opens up writes to the channels.
+type SendCursor interface {
+	SendErr(error) bool
+	Send(T) bool
+	Close()
+}
+
+// A Queryer specifies some query that can be instantiated with some arguments.
 type Queryer interface {
 	Query(query interface{}) TypeCurser
 }
 
-// TypeCurser is a Curser with a type selector..
-type TypeCurser interface {
-	Curser
-
-	Map() Curser
-	Struct(interface{}) Curser
-}
-
-// Curser is a complete selector and can start a Cursor.
+// Curser is a complete selector and can start a cursor.
 type Curser interface {
 	Cursor(args ...interface{}) Cursor
 }
 
-//FanIn multiplexes a set of cursors onto a single one.
-// func FanIn(cursors ...cursor) Cursor {
-// 	return nil
-// }
+// TypeCurser is a Curser with an optional type association with an inferred decoding strategy.
+type TypeCurser interface {
+	Curser
+	Type(interface{}) Curser
+}
 
-// CollectErr fans through the cursors, serially, and sends their errors to a new channel. May block unneccesarily but this is subject
-// to change.
+// A Listener can attach fan-out cursors onto a cursor.
+type Listener interface {
+	Listen() Cursor
+	StopListen(Cursor)
+}
+
+// Close all argument cursors.
+func Close(slice ...Cursor) {
+	for _, c := range slice {
+		c.Close()
+	}
+}
+
+// CollectErr collects the cursors errors and sends them to a new
+// channel. Currently the cursors are read serially and may block unneccesarily.
 func CollectErr(cursors ...Cursor) <-chan error {
 	// TODO use reflection selects
 	errs := make(chan error)
@@ -50,10 +61,9 @@ func CollectErr(cursors ...Cursor) <-chan error {
 	return errs
 }
 
-// StringBytes retype []byte
-// values to strings in a map[string]interface{}
+// StringBytes converts []byte values to strings in a Blob.
 func StringBytes(m T) T {
-	if m, ok := m.(map[string]T); ok {
+	if m, ok := m.(Blob); ok {
 		for k, v := range m {
 			if v, ok := v.([]byte); ok {
 				m[k] = string(v)
@@ -66,7 +76,11 @@ func StringBytes(m T) T {
 func do(c Cursor) Cursor {
 	go func() {
 		defer c.Close()
-		c.do()
+		c.(doer).do()
 	}()
 	return c
+}
+
+type doer interface {
+	do()
 }

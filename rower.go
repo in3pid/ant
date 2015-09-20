@@ -6,9 +6,12 @@ import (
 	"reflect"
 )
 
-// Query instantiates a cursor builder. The cursor ultimately reads
-// sqlx.Rows from sqlx.DB.Query(q, rgs...) with either .Scan, .StructScan or .MapScan.
-func Query(db *sqlx.DB, q string) TypeCurser {
+//
+type Blob map[string]interface{}
+
+// Query instantiates a cursor builder. The resulting Curser.Cursor(args...) ultimately reads
+// sqlx.Rows from sqlx.DB.Query(q, args...) with either .Scan, .StructScan or .MapScan.
+func QueryDB(db *sqlx.DB, q string) TypeCurser {
 	return dbQuery{db: db, q: q}
 }
 
@@ -17,25 +20,23 @@ type dbQuery struct {
 	q  string
 }
 
-// Struct types cursor decoding to the given struct.
-func (q dbQuery) Struct(s interface{}) Curser {
-	t := reflect.TypeOf(s)
-	switch s.(type) {
+// Type specifies the cursor to decode to the given type.
+func (q dbQuery) Type(t interface{}) Curser {
+	tt := reflect.TypeOf(t)
+
+	switch t.(type) {
+	case map[string]interface{}:
+		return mapRower{q}
 	case sql.Scanner:
-		return scanRower{q, t}
+		return scanRower{q, tt}
 	default:
-		return structRower{q, t}
+		return structRower{q, tt}
 	}
 }
 
-// Map types cursor decoding to a map.
-func (q dbQuery) Map() Curser {
-	return mapRower{q}
-}
-
-// Cursor is the default-type cursor and is equal to Map()
+// Cursor defaults to a common Blob type.
 func (q dbQuery) Cursor(args ...interface{}) Cursor {
-	return q.Map().Cursor(args...)
+	return q.Type((Blob)(nil)).Cursor(args...)
 }
 
 /// a rowScanner wraps the (*sqlx.Rows).Scan call

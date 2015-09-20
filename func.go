@@ -1,7 +1,7 @@
 package ant
 
-// Func starts a new cursor from f and a new Signal. The signal is
-// assuredly closed afterwards.
+// Func starts a new cursor of f and a new signal, which is
+// closed once the funcion returns.
 func Func(f func(Signal)) Cursor {
 	return do(signalFunc{MakeSignal(), f})
 }
@@ -23,6 +23,8 @@ func Values(values ...T) Cursor {
 		}
 	})
 }
+
+type FoldFunc func(T) T
 
 // Fold the cursor such that for each value v, Fn(Fn-1(...(v))) is
 // passed to upstream. The value is skipped if any function return nil.
@@ -56,7 +58,7 @@ loop:
 	c.CopyErr(c.c)
 }
 
-// Filter c through a predicate f.
+// Filter c by the predicate f.
 func Filter(c Cursor, f func(T) bool) Cursor {
 	return Fold(c, filter(f))
 }
@@ -66,6 +68,22 @@ func filter(f func(T) bool) func(T) T {
 		if f(t) {
 			return t
 		} else {
+			return nil
+		}
+	}
+}
+
+// ForwardFilter emits the filtered values to a channel.
+func ForwardFilter(to chan<- T, c Cursor, f func(T) bool) Cursor {
+	return Fold(c, forwardFilter(to, f))
+}
+
+func forwardFilter(to chan<- T, f func(T) bool) func(T) T {
+	return func(t T) T {
+		if f(t) {
+			return t
+		} else {
+			to <- t
 			return nil
 		}
 	}

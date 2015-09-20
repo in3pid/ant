@@ -42,6 +42,11 @@ func (s Signal) Send(value T) bool {
 	}
 }
 
+// Stop returns the stop signal channel for reading.
+func (s Signal) Stop() <-chan struct{} {
+	return s.stop
+}
+
 // Err returns the error channel for reading.
 func (s Signal) Err() <-chan error {
 	return s.err
@@ -55,13 +60,23 @@ func (s Signal) Value() <-chan T {
 // Close notifies the goroutine on the stop channel and closes the signal.
 func (s Signal) Close() {
 	close(s.stop)
-	time.Sleep(100)
+	time.Sleep(1)
 	close(s.err)
 	close(s.val)
 }
 
+// Closed answers whether this signal is closed or open.
+func (s Signal) Closed() bool {
+	select {
+	case <-s.stop:
+		return true
+	default:
+		return false
+	}
+}
+
 // CopyErr copies the error, if any, from c and returns true if any
-// error was ent.
+// error was sent.
 func (s Signal) CopyErr(c Cursor) bool {
 	err, ok := <-c.Err()
 	if ok {
