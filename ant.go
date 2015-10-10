@@ -14,14 +14,8 @@ func antLog(f string, args ...interface{}) { Logger(f, args...) }
 
 type Value interface{}
 
-// A Cursor is a "lazy list" goroutine tied to a communcation agent.
 type Cursor interface {
 	Signal
-}
-
-// A Signaler exposes its Signal by pointer.
-type Signaler interface {
-	Signal() Signal
 }
 
 // A Queryer specifies some query that can be instantiated with some arguments.
