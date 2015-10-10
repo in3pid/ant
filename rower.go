@@ -23,12 +23,15 @@ type dbQuery struct {
 // Type specifies the cursor to decode to the given type.
 func (q dbQuery) Type(t interface{}) Curser {
 	tt := reflect.TypeOf(t)
+	for tt.Kind() == reflect.Ptr {
+		tt = tt.Elem()
+	}
 
 	switch t.(type) {
-	case map[string]interface{}:
-		return mapRower{q}
 	case sql.Scanner:
 		return scanRower{q, tt}
+	case Blob:
+		return mapRower{q}
 	default:
 		return structRower{q, tt}
 	}
@@ -42,16 +45,16 @@ func (q dbQuery) Cursor(args ...interface{}) Cursor {
 /// a rowScanner wraps the (*sqlx.Rows).Scan call
 
 type rowScanner interface {
-	scanRow(row *sqlx.Rows) (T, error)
+	scanRow(row *sqlx.Rows) (Value, error)
 }
 
-//- scanRower ses (*sql.Rows).Scan
+//- scanRower uses (*sql.Rows).Scan
 
 func (r scanRower) Cursor(args ...interface{}) Cursor {
 	return rows(r, r.q, args...)
 }
 
-func (r scanRower) scanRow(rows *sqlx.Rows) (T, error) {
+func (r scanRower) scanRow(rows *sqlx.Rows) (Value, error) {
 	p := reflect.New(r.t).Interface()
 	e := rows.Scan(p)
 	return p, e
@@ -68,7 +71,7 @@ func (r structRower) Cursor(args ...interface{}) Cursor {
 	return rows(r, r.q, args...)
 }
 
-func (r structRower) scanRow(rows *sqlx.Rows) (T, error) {
+func (r structRower) scanRow(rows *sqlx.Rows) (Value, error) {
 	p := reflect.New(r.t).Interface()
 	e := rows.StructScan(p)
 	return p, e
@@ -85,7 +88,7 @@ func (r mapRower) Cursor(args ...interface{}) Cursor {
 	return rows(r, r.q, args...)
 }
 
-func (r mapRower) scanRow(rows *sqlx.Rows) (T, error) {
+func (r mapRower) scanRow(rows *sqlx.Rows) (Value, error) {
 	m := make(map[string]interface{})
 	e := rows.MapScan(m)
 	return m, e
@@ -103,25 +106,27 @@ type rowCursor struct {
 }
 
 func rows(s rowScanner, q dbQuery, args ...interface{}) Cursor {
-	return do(rowCursor{MakeSignal(), s, q, args})
+	return Do(rowCursor{NewSignal(), s, q, args})
 }
 
-func (c rowCursor) do() {
-	var t T
-
+func (c rowCursor) Do() {
 	rows, err := c.Queryx(c.args...)
-	for err == nil && rows.Next() {
-		if t, err = c.scanRow(rows); err == nil {
-			if !c.Send(t) {
-				break
-			}
-		}
-	}
 	if err != nil {
-		c.SendErr(err)
+		panic(err)
 	}
-	if rows != nil {
-		rows.Close()
+	defer func() {
+		// mysql driver wont close until it has read to eof
+		go rows.Close()
+	}()
+
+	for rows.Next() {
+		t, err := c.scanRow(rows)
+		if err != nil {
+			panic(err)
+		}
+		if !Send(c, t) {
+			break
+		}
 	}
 }
 

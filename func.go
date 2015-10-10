@@ -1,9 +1,14 @@
 package ant
 
+import (
+	"math/rand"
+	"time"
+)
+
 // Func starts a new cursor of f and a new signal, which is
 // closed once the funcion returns.
-func Func(f func(Signal)) Cursor {
-	return do(signalFunc{MakeSignal(), f})
+func Func(f func(Signal)) Signal {
+	return Do(signalFunc{NewSignal(), f})
 }
 
 type signalFunc struct {
@@ -11,80 +16,95 @@ type signalFunc struct {
 	f func(Signal)
 }
 
-func (c signalFunc) do() { c.f(c.Signal) }
+func (c signalFunc) Do() { c.f(c.Signal) }
 
 // Values starts a cursor sending the argument values.
-func Values(values ...T) Cursor {
+func Values(values ...Value) Signal {
 	return Func(func(s Signal) {
 		for _, v := range values {
-			if !s.Send(v) {
+			if !Send(s, v) {
 				break
 			}
 		}
 	})
 }
 
-type FoldFunc func(T) T
+// func Fn(fn func(Signal)) Signal {
+// 	return Do(&doFn{NewSignal(), fn})
+// }
 
-// Fold the cursor such that for each value v, Fn(Fn-1(...(v))) is
-// passed to upstream. The value is skipped if any function return nil.
-func Fold(c Cursor, f ...func(T) T) Cursor {
-	if fc, ok := c.(*foldCursor); ok {
-		fc.f = append(fc.f, f...)
-		return c
-	} else {
-		return do(&foldCursor{MakeSignal(), c, f})
-	}
-}
+// type doFn struct {
+// 	Signal
+// 	fn func(Signal)
+// }
 
-type foldCursor struct {
+// func (do doFn) do() {
+// 	do.fn(do.Signal)
+// }
+
+// ant.Func(func(s Signal) { s.Value() <- 1 })
+
+type MapFunc func(Value) (Value, error)
+
+type sigMap struct {
 	Signal
-	c Cursor
-	f []func(T) T
+	from Signal
+	fn   MapFunc
 }
 
-func (c foldCursor) do() {
-loop:
-	for v := range c.c.Value() {
-		for _, f := range c.f {
-			if v = f(v); v == nil {
-				continue loop
+func (s *sigMap) Do() {
+	var err error
+	//	var val interface{}
+	for {
+		// if val != nil || err != nil && !Send(s, val, err) {
+		// 	return
+		// }
+		select {
+		case err = <-s.from.Err():
+
+		case val, ok := <-s.from.Value():
+			if !ok {
+				return
+			}
+			if val, err = s.fn(val); val == nil {
+				continue
+			}
+			if err != nil {
+				SendErr(s, err)
+				return
+			}
+			if !Send(s, val) {
+				return
 			}
 		}
-		if !c.Send(v) {
-			break
-		}
-	}
-	c.CopyErr(c.c)
-}
-
-// Filter c by the predicate f.
-func Filter(c Cursor, f func(T) bool) Cursor {
-	return Fold(c, filter(f))
-}
-
-func filter(f func(T) bool) func(T) T {
-	return func(t T) T {
-		if f(t) {
-			return t
-		} else {
-			return nil
-		}
 	}
 }
 
-// ForwardFilter emits the filtered values to a channel.
-func ForwardFilter(to chan<- T, c Cursor, f func(T) bool) Cursor {
-	return Fold(c, forwardFilter(to, f))
+func Map(s Signal, fn MapFunc) Signal {
+	return Do(&sigMap{NewSignal(), s, fn})
 }
 
-func forwardFilter(to chan<- T, f func(T) bool) func(T) T {
-	return func(t T) T {
-		if f(t) {
-			return t
-		} else {
-			to <- t
-			return nil
+type FoldFunc func(Value) error
+
+func Fold(from Signal, fn FoldFunc) error {
+	for {
+		select {
+		case val, ok := <-from.Value():
+			if !ok {
+				return nil
+			}
+			if err := fn(val); err != nil {
+				return err
+			}
+		case err := <-from.Err():
+			return err
 		}
 	}
+}
+
+func Throttle(s Signal) Signal {
+	return Map(s, func(v Value) (Value, error) {
+		time.Sleep(time.Duration(rand.Intn(1000)))
+		return v, nil
+	})
 }

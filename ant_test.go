@@ -1,9 +1,8 @@
 package ant
 
 import (
-	"fmt"
+	"log"
 	"math/rand"
-	"reflect"
 	"testing"
 	"time"
 )
@@ -23,18 +22,22 @@ func (z z) Error() string { return "z{}" }
 func TestFunc(t *testing.T) {
 	c := Func(func(s Signal) {
 		for i := 0; i < 10; i++ {
-			s.Send(rand.Intn(100))
+			if !Send(s, rand.Intn(100)) {
+				return
+			}
 		}
 	})
 
-	c = Filter(c, func(t T) bool {
-		n, ok := t.(int)
-		return ok && n%2 == 1
+	c = Map(c, func(t Value) (Value, error) {
+		if n, ok := t.(int); ok && n%2 == 1 {
+			return n, nil
+		}
+		return nil, nil
 	})
 
 	//	c = Filter(c, func(n int) bool { return n%2 == 1 })
 
 	for n := range c.Value() {
-		t.Log(n)
+		log.Println(n)
 	}
 }
