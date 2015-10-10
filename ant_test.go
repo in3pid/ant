@@ -20,12 +20,13 @@ type z struct{}
 func (z z) Error() string { return "z{}" }
 
 func TestFunc(t *testing.T) {
-	c := Func(func(s Signal) {
+	c := Func(func(s Signal) error {
 		for i := 0; i < 10; i++ {
 			if !Send(s, rand.Intn(100)) {
-				return
+				return nil
 			}
 		}
+		return nil
 	})
 
 	c = Map(c, func(t Value) (Value, error) {

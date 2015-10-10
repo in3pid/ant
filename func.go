@@ -7,25 +7,26 @@ import (
 
 // Func starts a new cursor of f and a new signal, which is
 // closed once the funcion returns.
-func Func(f func(Signal)) Signal {
+func Func(f func(Signal) error) Signal {
 	return Do(signalFunc{NewSignal(), f})
 }
 
 type signalFunc struct {
 	Signal
-	f func(Signal)
+	f func(Signal) error
 }
 
-func (c signalFunc) Do() { c.f(c.Signal) }
+func (s signalFunc) Do() { SendErr(s, s.f(s.Signal)) }
 
 // Values starts a cursor sending the argument values.
 func Values(values ...Value) Signal {
-	return Func(func(s Signal) {
+	return Func(func(s Signal) error {
 		for _, v := range values {
 			if !Send(s, v) {
 				break
 			}
 		}
+		return nil
 	})
 }
 
