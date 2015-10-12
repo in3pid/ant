@@ -172,7 +172,7 @@ func (l *logger) Do() {
 
 func Copy(to, from Signal) (nValue, nErr int) {
 	val, err := from.Value(), from.Err()
-	for !(val == nil && err == nil) {
+	for val != nil || err != nil {
 		select {
 		case e, ok := <-err:
 			if nErr++; !(ok && SendErr(to, e)) {

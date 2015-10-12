@@ -54,27 +54,26 @@ type sigMap struct {
 }
 
 func (s *sigMap) Do() {
-	var err error
-	//	var val interface{}
 	for {
-		// if val != nil || err != nil && !Send(s, val, err) {
-		// 	return
-		// }
 		select {
-		case err = <-s.from.Err():
-
-		case val, ok := <-s.from.Value():
-			if !ok {
-				return
-			}
-			if val, err = s.fn(val); val == nil {
-				continue
-			}
+		case err := <-s.from.Err():
 			if err != nil {
 				SendErr(s, err)
 				return
 			}
-			if !Send(s, val) {
+		case val, ok := <-s.from.Value():
+			if !ok {
+				return
+			}
+			if val == nil {
+				continue
+			}
+			val, err := s.fn(val)
+			if err != nil {
+				SendErr(s, err)
+				return
+			}
+			if val != nil && !Send(s, val) {
 				return
 			}
 		}
